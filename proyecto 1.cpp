@@ -2,6 +2,7 @@
 *Universidad del Valle de Guatemala
 *Nombre: Rodrigo Fernando Recinos Lopez
 *Fecha: 31/07/2026
+*       08/08/2026 Cambios sobre variables para valores en display
 *Curso: Electronica digital 2
 *Proyecto1: sistema embebido
 ***********************************************/
@@ -9,7 +10,7 @@
 #include <stdint.h>
 #include <driver/ledc.h>
 
-#define alarma 2000
+#define alarma 3000
 #define canalr 0
 #define canalg 1
 #define canalb 2
@@ -39,8 +40,11 @@ const int bt1 = 23;
 const int lm35 = 35;
 //motor servo
 const int servo = 15;
-//arreglo displays
-int digitos[3];
+
+int valor = 0;
+int decimal = 0;
+int unidad = 0;
+int decena = 0;
 float temperatura = 0;
 bool nuevalectura = false;
 //variable activa por interrupcion
@@ -52,6 +56,8 @@ hw_timer_t *Timer1 = NULL;
 void initPWM(void);
 void initservo(void);
 void configTimer(void);
+void mostrar(int);
+void servoPWM(uint16_t);
 //interrupcion boton
 void IRAM_ATTR interr(){
   nuevalectura = true;
@@ -67,26 +73,26 @@ void IRAM_ATTR multiISR()
     digitalWrite(transis2, LOW);
     digitalWrite(transis3, LOW);
 
-    mostrar(digitos[displayActual]);
+    
 
     switch(displayActual)
     {
         case 0:
-
+            mostrar(decimal);
             digitalWrite(transis1,HIGH);
             digitalWrite(punto,HIGH);
 
             break;
 
         case 1:
-
+            mostrar(unidad);
             digitalWrite(transis2,HIGH);
             digitalWrite(punto,LOW);
 
             break;
 
         case 2:
-
+            mostrar(decena);
             digitalWrite(transis3,HIGH);
             digitalWrite(punto,LOW);
 
@@ -109,6 +115,17 @@ void leertemp()
     float voltaje = lectura * 3.3 / 4095.0;
 
     temperatura = voltaje * 100.0;
+
+    Serial.print(" ADC: ");
+    Serial.print(lectura);
+
+    Serial.print(" | Voltaje: ");
+    Serial.print(voltaje, 3);
+
+    Serial.print(" V | Temperatura: ");
+    Serial.print(temperatura, 1);
+
+    Serial.println(" C");
 }
 //utilizamos el pulso pwm para mover el servo 
 void moverservo()
@@ -117,13 +134,17 @@ void moverservo()
     {
         servoPWM(1000);      // Cerrado
     }
-
-    else if(temperatura >=23 && temperatura <27)
+    else if(temperatura >=23 && temperatura <25)
     {
         servoPWM(1500);      // Medio
     }
 
-    else
+    else if(temperatura >=25 && temperatura <27)
+    {
+        servoPWM(1500);      // Medio
+    }
+
+    else if (temperatura >=27)
     {
         servoPWM(2000);      // Abierto
     }
@@ -151,7 +172,7 @@ void medirtemp(){
         ledcWrite(canalb,0);
     }
 
-    else
+    else 
     {
         ledcWrite(canalr,255);
         ledcWrite(canalg,0); //rojo
@@ -165,43 +186,51 @@ void cambiosdisplay()
 {
     int valor = temperatura * 10;
 
-    digitos[0] = valor / 100;
+    decena = (valor / 100)%10;
 
-    digitos[1] = (valor / 10) % 10;
+    unidad = (valor / 10) % 10;
 
-    digitos[2] = valor % 10;
+    decimal = valor % 10;
 }
 
 
 void setup() {
-  initPWM();
-  initservo();
-  configTimer();
+   Serial.begin(115200);
 
-  pinMode(transis1, OUTPUT);
-  pinMode(transis2, OUTPUT);
-  pinMode(transis3, OUTPUT);
+    initPWM();
+    initservo();
+    configTimer();
 
-  pinMode(lm35, INPUT);
+    // Transistores
+    pinMode(transis1, OUTPUT);
+    pinMode(transis2, OUTPUT);
+    pinMode(transis3, OUTPUT);
 
-  digitalWrite(transis1, LOW);
-  digitalWrite(transis2, LOW);
-  digitalWrite(transis3, LOW);
+    digitalWrite(transis1, LOW);
+    digitalWrite(transis2, LOW);
+    digitalWrite(transis3, LOW);
 
-  pinMode(segA,OUTPUT);
-  pinMode(segB,OUTPUT);
-  pinMode(segC,OUTPUT);
-  pinMode(segD,OUTPUT);
-  pinMode(segE,OUTPUT);
-  pinMode(segF,OUTPUT);
-  pinMode(segG,OUTPUT);
+    // Display
+    pinMode(segA, OUTPUT);
+    pinMode(segB, OUTPUT);
+    pinMode(segC, OUTPUT);
+    pinMode(segD, OUTPUT);
+    pinMode(segE, OUTPUT);
+    pinMode(segF, OUTPUT);
+    pinMode(segG, OUTPUT);
+    pinMode(punto, OUTPUT);
 
-  attachInterrupt(23, &interr, RISING);
+    digitalWrite(punto, LOW);
 
-  leertemp();
-  cambiosdisplay();
-  moverservo();
-  medirtemp();
+    // LM35
+    pinMode(lm35, INPUT);
+
+    // Primera lectura
+    leertemp();
+    cambiosdisplay();
+    moverservo();
+    medirtemp();
+    attachInterrupt(digitalPinToInterrupt(bt1), interr, FALLING);
   
 }
 //encendemos display segun valores recibidos
@@ -273,13 +302,15 @@ void initservo(void){
 //mandar pulso
 void servoPWM(uint16_t ancho_us)
 {
-    uint32_t duty = (ancho_us * 65535UL) / 20000UL;
+    uint32_t duty = (ancho_us * 65535UL) / 20000UL; //sin signo y entero largo
     ledcWrite(canalservo, duty);
+    Serial.print("Duty: ");
+    Serial.print(duty);
 }
 //timer displays
-void configTimer()
+void configTimer(void)
 {
-    Timer1 = timerBegin(0,1000000, true);
+    Timer1 = timerBegin(0,80, true);
     timerAttachInterrupt(Timer1, &multiISR, true);
     timerAlarmWrite(Timer1,alarma,true);
     timerAlarmEnable(Timer1);
